@@ -6,7 +6,7 @@ namespace NCalculation
 		this->expression_ = expression;
 		return this->calc();
 	}
-
+	
 	const double CalcWorker::calc() {
 		for (auto iter = this->expression_.begin(); iter != this->expression_.end(); ++iter) {
 			if (true == isdigit(*iter)) {
@@ -19,38 +19,58 @@ namespace NCalculation
 				throw std::runtime_error("CalcWorker::calc(): not valid input expression.");
 			}
 		}
-		while (this->operands_.size() >= 2 &&
-			   0 != this->operators_.size()) {
-			this->top_calculation();
+		while (this->operators_.size() > 0) {
+			this->operator_from_stack_to_opn();
 		}
-		if (0 == this->operands_.size() ||
-			(0 != this->operands_.size() && 
-			0 != this->operators_.size()) ||
-			(1 != this->operands_.size() &&
-			0 == this->operators_.size())) {
-			throw std::runtime_error("CalcWorker::calc(): not valid input expression.");
-		}
-		auto ans = this->operands_.back();
-		this->operands_.pop_back();
-		return ans;
+		return this->calc_opn(this->expression_opn_);
 	}
 
-	void CalcWorker::interim_calc(char new_oper) {
+	const double CalcWorker::calc_opn(expression_opn_list &opn) const {
+		std::vector<double> values_vec(0);
+		for (auto iter = opn.begin(); opn.end() != iter; ++iter) {
+			if (true == this->is_float(*iter)) {
+				double value = 0;
+				std::stringstream(*iter) >> value;
+				values_vec.push_back(value);
+			}
+			else if (true == this->isoperator(*iter)) {
+				if (values_vec.size() < 2) {
+					throw std::runtime_error("CalcWorker::calculation_opn(): not valid input expression.");
+				}
+				auto second_val = values_vec.back();
+				values_vec.pop_back();
+				auto first_val = values_vec.back();
+				values_vec.pop_back();
+				auto local_res = this->coumputation(first_val, second_val, (*iter)[0]);
+				values_vec.push_back(local_res);
+			}
+		}
+		if (values_vec.size() > 1) {
+			throw std::runtime_error("CalcWorker::calculation_opn(): not valid input expression.");
+		}
+		return 0 == values_vec.size() ? 0 : values_vec[0];
+ 	}
+
+	void CalcWorker::operator_from_stack_to_opn() {
+		std::stringstream sstream;
+		sstream<<this->operators_.top();
+		this->expression_opn_.push_back(sstream.str());
+		this->operators_.pop();
+	}
+
+	void CalcWorker::stack_permutation(char new_oper) {
 		auto new_oper_type = this->get_operators_type(new_oper);
 		if (new_oper_type >= e_operators_type::LOW_T &&
-			new_oper_type < e_operators_type::HIGH_T) {
-			while (0 != this->operators_.size() &&
-				new_oper_type <= this->get_operators_type(this->operators_.top())) {
-				if (this->operands_.size() < 2) {
-					throw std::runtime_error("CalcWorker::interim_calc(): not valid input expression.");
-				}
-					this->top_calculation();
+			e_operators_type::HIGH_T != new_oper_type) {
+			while (	0 != this->operators_.size() &&
+					new_oper_type <= this->get_operators_type(this->operators_.top())) {
+				this->operator_from_stack_to_opn();
 			}
 		}
 		if (e_operators_type::RIGHT_BKT == new_oper_type &&
 			0 != this->operators_.size()) {
 			while (e_operators_type::LEFT_BKT != this->get_operators_type(this->operators_.top())) {
-				this->top_calculation();				
+				this->operator_from_stack_to_opn();
 			}
 			this->operators_.pop();
 			return;
@@ -58,15 +78,8 @@ namespace NCalculation
 		this->operators_.push(new_oper);
 	}
 
-	void CalcWorker::top_calculation() {
-		auto second_val = this->operands_.back();
-		this->operands_.pop_back();
-		auto first_val = this->operands_.back();
-		this->operands_.back() = this->coumputation(first_val, second_val, this->operators_.top());
-		this->operators_.pop();
-	}
-
 	const double CalcWorker::coumputation(double first, double second, char operation) const {
+		// std::cout<<"coumputation "<<first<<operation<<second<<std::endl;
 		switch(operation) {
 			case '+': return first + second;
 			case '-': return first - second;
@@ -113,9 +126,23 @@ namespace NCalculation
 	}
 
 
+	bool CalcWorker::is_float(const std::string& str) const {
+	    std::istringstream iss(str);
+	    float ans;
+	    iss >> std::noskipws >> ans; 
+	    return iss.eof() && !iss.fail(); 
+	}
+
 	bool CalcWorker::isoperator(const char symbol) const {
 		std::vector<char> operators = {'+', '-', '*', '/', '^', '(', ')'};
 		return std::find(operators.begin(), operators.end(), symbol) != operators.end();
+	}
+
+	bool CalcWorker::isoperator(std::string &str) const {
+		std::vector<char> operators = {'+', '-', '*', '/', '^', '(', ')'};
+		auto end_pos = std::remove(str.begin(), str.end(), ' ');
+		str.erase(end_pos, str.end());
+		return !str.empty() && 1 == str.size() && std::find(str.begin(), str.end(), str[0]) != operators.end();
 	}
 
 	bool CalcWorker::is_valid_seq_operators(char prev, char last) const {
@@ -134,32 +161,25 @@ namespace NCalculation
 			return false;
 		}
 		if (prev_type == e_operators_type::LEFT_BKT &&
+			last_type >= e_operators_type::LOW_T &&
 			'-' != last) {
 			return false;
 		}
 		return true;
 	}
 
+
 	void CalcWorker::push_back_operand(std::string::iterator &iter) {
-		auto start_substr = iter;
+		auto start_substr(iter);
 		auto is_double = false;
-		double current_value = *iter - '0';
 		while (this->expression_.end() != iter + 1) {
 			if (true == isdigit(*(iter + 1))) {
 				++iter;
-				// current_value = current_value * 10 + (*(++iter) - '0');
 			}
 			else if (false == is_double &&
 					'.' == *(iter + 1)) {
 				++iter;
-				// double factional = 0;
-				// auto factional_degree = 0;
-				// while (	this->expression_.end() != iter + 1 &&
-				// 		true == isdigit(*(iter + 1))) {
-				// 	factional = factional * 10 + (*(++iter) - '0');
-				// 	++factional_degree;
-				// }
-				// current_value += (factional / pow(10.0, factional_degree));
+				is_double = true;
 			}
 			else if ('.' == *(iter + 1)) {
 				throw std::runtime_error("CalcWorker::push_back_operand(): not valid input expression.");
@@ -168,16 +188,30 @@ namespace NCalculation
 				break;
 			}
 		}
-		auto value(std::string(start_substr, iter));
-		this->operands_.push_back(value);
+		std::string value(start_substr, iter + 1);
+		if (0 != this->operators_.size() &&
+			'~' == this->operators_.top()) {
+			value = "-" + value;
+			this->operators_.pop();
+		}
+		this->expression_opn_.push_back(value);
 	}
 
 	void CalcWorker::push_back_operator(std::string::iterator &iter) {
 		if ('-' == *iter) {
-			if (0 == this->operands_.size() ||
-				'(' == *(iter - 1)) {
-				this->operands_.push_back(0);
-				this->operators_.push(*iter);
+			if (0 == this->expression_opn_.size()) {
+				if (this->expression_.end() != iter + 1) {
+					if ('(' == *(iter + 1)) {
+						this->expression_opn_.push_back("0");
+						this->operators_.push('-');
+						return;
+					}
+				}
+				this->operators_.push('~');
+				return;
+			}
+			else if ('(' == *(iter - 1)) {
+				this->operators_.push('~');
 				return;
 			}
 		}
@@ -191,7 +225,6 @@ namespace NCalculation
 				}
 			}
 		}
-		this->interim_calc(*iter);
+		this->stack_permutation(*iter);
 	}
-
 }
