@@ -84,7 +84,13 @@ namespace NCalculation
 			case '+': return first + second;
 			case '-': return first - second;
 			case '*': return first * second;
-			case '/': return first / second;
+			case '/': 
+						{
+							if (0 == second) {
+								throw std::runtime_error("Zero divide error " + std::to_string(first) + std::string(1, operation) + std::to_string(second));
+							}
+							return first / second;
+						}
 			case '^': return pow(first, second);
 			default: 
 				{
